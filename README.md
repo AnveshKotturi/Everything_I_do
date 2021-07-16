@@ -1,7 +1,7 @@
-Classification project:
-I and my partner have used classification techniques of machine learning like Support vector machine, K nearest neighbors and resampling methods on cerdit card dataset.
+Classification project: 
+Used classification techniques of machine learning on a dataset consisting of information connected to incidents of credit card fraudalent cases.
 
 Regression Project:
-In this project we have used concepts of regression analysis on a dataset consisting obswervations of the h3eart failure cases.
+Used techniques of regression(from machine learning) on a dataset that has observations related to cases of cardio-vascular diseases or in other words known as heart failure.
 
 Check out the html documents in the folder to have a good understanding of the entire project.

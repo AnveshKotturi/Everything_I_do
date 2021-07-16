@@ -1,0 +1,389 @@
+---
+title: "Machine Learning Project - classification on creditcard fraud dataset"
+author: "Anvesh Kotturi (428935), Dariusz Kesicki (384759)"
+date: "7th June 2021"
+output:
+  html_document:
+    number_sections: true
+    theme: spacelab
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+fontsize: 12pt
+---
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+options(scipen=999)
+Sys.setenv(LANG = "en")
+
+```
+
+```{r libraries, include=FALSE}  
+# loading libraries used in the project
+library(dplyr)
+library(readr)
+library(caret)
+library(tidyverse)
+library(e1071)
+library(pROC)
+library(kableExtra)
+library(ROSE)
+
+```
+
+```{r data, include = FALSE}  
+data <- read.csv("C:/Users/anves/Downloads/creditcard.data/creditcard.csv")
+
+```
+
+# Introduction
+
+It is important that credit card companies are able to recognize fraudulent credit card transactions so that customers are not charged for items that they did not purchase. Credit card fraud is a fraud committed using a payment card, such as credit card or debit card. The purpose may be to obtain goods or services, or to make payment to another account which is controlled by a criminal. Credit card fraud can be authorised, where the genuine customer themselves processes a payment to another account which is controlled by a criminal, or unauthorised, where the account holder does not provide authorization for the payment to proceed and the transaction is carried out by a third party.
+
+Credit cards are more secure than ever, with regulators, card providers and banks taking considerable time and effort to collaborate with investigators worldwide to ensure fraudsters aren't successful. Cardholders' money is usually protected from scammers with regulations that make the card provider and bank accountable. The technology and security measures behind credit cards are becoming increasingly sophisticated making it harder for fraudsters to steal money.
+
+# Data description and processing
+
+The dataset used in this project was downloaded from [Kaggle](https://www.kaggle.com/mlg-ulb/creditcardfraud). The dataset contains transactions made by credit cards in September 2013 by European cardholders. 
+
+The dataset consists of only numerical input variables which are result of a PCA(Prompt Corrective Action) transformation.Unfortunately, due to confidentiality issues, we cannot provide the original features and more background information about the data. 
+* Features V1, V2, … V28 are the principal components obtained with PCA, the only features which have not been transformed with PCA are 'Time' and 'Amount'.
+* Feature 'Time' contains the seconds elapsed between each transaction and the first transaction in the dataset.
+* The feature 'Amount' is the transaction Amount, this feature can be used for example-dependent cost-sensitive learning.
+* Feature 'Class' is the response variable and it takes value 1 in case of fraud and 0 otherwise.
+
+Dataset has been summarized below
+
+```{r echo=FALSE}
+summary(data)
+```
+
+
+## Data processing
+
+In the initial analysis of dataset, we check whether the dataset contains missing values. For this purpose We have calculated the percentage of missing value for each variable using function is.na. 
+
+```{r echo=FALSE}
+missing <- (colSums(is.na(data))/dim(data)[1])
+missing
+
+```
+
+As we can see, the set does not contain any missing data, so we do not have to solve this problem. 
+
+Due to the fact that the dataset is related to credit card frauds, there are no variables which are supposed to be removed or added to make better predicts on the dataset. The dataset has 284,807 observations which make the predicts take very long time, taking only 40,000 observations into consideration.
+
+```{r echo=FALSE}
+data <- data[1:34000,]
+```
+
+# Empirical research
+
+
+## Creating subsamples
+
+
+Firstly, we have split the data into two subsamples - training sample (70%) and test sample (30%). The first sample will be used to train the model and then we will compare the obtained estimations to the real observed values from the test sample. In order to investigate whether subgroups are similar to each other, it was decided to calculate their basic statistics. On their basis it was concluded that the groups are similar to each other (equal median, 1st and 3rd quantile) 
+
+```{r echo=FALSE}
+set.seed(54321)
+train <- createDataPartition(data$Class, p = 0.7, list = FALSE)
+
+data_train <- data[train,1:31]
+data_test <- data[-train,1:31]
+
+
+summary(data_train$Class)
+summary(data_test$Class)
+```
+
+```{r echo=FALSE}
+data_train$Class <- as.factor(data_train$Class)
+
+data_test$Class <- as.factor(data_test$Class)
+```
+
+## Linear SVM
+
+Below are the results for the linear SVM algorithm using random over-sampling
+
+```{r echo=FALSE}
+ctrl_nocv <- trainControl(method = "none")
+
+ctrl_nocv$sampling <- "rose"
+
+data.svm1 <- train(Class ~ .,
+                   data = data_train,
+                   method = "svmLinear",
+                   trControl = ctrl_nocv)
+
+svm_fit <- predict(data.svm1,data_train)
+
+data_test$SVM_linear <- predict(data.svm1, 
+                                newdata = data_test)
+
+linearSVM <- confusionMatrix(data_test$SVM_linear, 
+                data_test$Class, 
+                positive = "1")
+
+LinearSVM_results <- round(c(linearSVM$overall[1], linearSVM$byClass[c(1:4, 7, 11)]),4)
+
+linearSVM
+
+```
+
+By the help of Linear support vector machine model (SVM Linear), the accuracy is 0.9978 and the balanced accuracy is 0.9633
+
+## Polynomial SVM
+
+Below are the results for the SVM algorithm in the polynomial version.
+
+```{r echo=FALSE}
+ctrl_cv5x3 <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 3)
+
+svm_parametersPoly <- expand.grid(C = c(0.001, 1),
+                                  degree = 2:5, 
+                                  scale = 1)
+
+set.seed(987654321)
+
+data.svm_poly <- train(Class~., 
+                        data = data_train, 
+                        method = "svmPoly",
+                        tuneGrid = svm_parametersPoly,
+                        trControl = ctrl_cv5x3)
+
+svmpoly <- predict(data.svm_poly,data_train)
+
+data_test$fore_svm_poly <- predict(data.svm_poly, 
+                                    newdata = data_test)
+
+polySVM <- confusionMatrix(data_test$fore_svm_poly,
+                data_test$Class,
+                positive = "1")
+
+PolynomialSVM_results <- round(c(polySVM$overall[1], polySVM$byClass[c(1:4, 7, 11)]),4)
+
+polySVM
+
+```
+
+For the analytics above, it can be concluded that the accuracy of predict the credit frauds is 0.9989 and the balanced accuracy is 0.9282
+
+## Radial SVM
+
+Below are the results for the SVM algorithm in the first version of Radial. Also, random over-sampling applied.
+
+```{r echo=FALSE}
+
+ctrl_nocv$sampling <- "rose"
+
+data.svm_Radial <- train(Class ~ .,
+                           data = data_train, 
+                           method = "svmRadial",
+                           trControl = ctrl_nocv)
+
+svm_radial <- predict(data.svm_Radial,data_train)
+
+data_test$fore_svm_radial <- predict(data.svm_Radial, newdata = data_test)
+
+RadialSVM <- confusionMatrix(data_test$fore_svm_radial,
+                data_test$Class,
+                positive = "1")
+
+RadialSVM_results <- round(c(RadialSVM$overall[1], RadialSVM$byClass[c(1:4, 7, 11)]),4)
+
+RadialSVM
+
+```
+
+Accuracy at 0.9914 and the balanced accuracy is at 0.9601
+
+
+## K-Nearest Neighbors
+
+The k-nearest neighbors (KNN) algorithm is a simple, easy-to-implement supervised machine learning algorithm that can be used to solve both classification and regression problems.
+
+Below are the results for the KNN algorithm in the first version of K
+
+```{r echo=FALSE}
+knnfit <- train(Class ~.,
+                data = data_train,
+                method = "knn",
+                trControl = trainControl(method = "cv"))
+
+knn_fitted <- predict(knnfit,data_train)
+
+
+data_test$forecast_knnfit <- predict(knnfit, 
+                                     newdata = data_test)
+
+KNN <- confusionMatrix(data_test$forecast_knnfit, 
+                data_test$Class, 
+                positive = "1")
+
+KNN_results <- round(c(KNN$overall[1], KNN$byClass[c(1:4, 7, 11)]),4)
+
+KNN
+
+```
+
+From the work above, we can conclude that the accuracy is at 0.9973 and balanced accuracy is at 0.5000
+
+## Modified K-nearest Neighbors (MKNN)
+
+MKNN can be considered a kind of weighted KNN so that the query label is approximated by weighting the neighbors of the query. The procedure computes the frequencies of the same labeled neighbors to the total number of neighbors.
+
+Below are the results for the MKNN algorithm where K-value is the square root of number of rows in the dataframe being used.
+
+```{r echo=FALSE}
+sqrt(nrow(data_train))
+
+k_value <- data.frame(k = 154)
+
+knn154 <- train(Class ~.,
+               data = data_train,
+               method = "knn",
+               trControl = ctrl_nocv,
+               tuneGrid = k_value)
+ 
+knn154_fitted <- predict(knn154, data_train)
+
+data_test$forecast_knn154 <- predict(knn154, 
+                                    newdata = data_test)
+
+MKNN <- confusionMatrix(data_test$forecast_knn154, 
+                data_test$Class, 
+                positive = "1")
+
+MKNN_results <- round(c(MKNN$overall[1], MKNN$byClass[c(1:4, 7, 11)]),4)
+
+MKNN
+
+```
+
+Accuracy is at 0.6777 and the balanced accuracy is at 0.5179. 
+
+## Summarizing the results from all the models above
+
+From the above work, we have pulled out some observations from all the models that were used in this project, leaving aside resampling techniques.
+
+The table below produces accuracy, sensitivity, specificity, positive prediction value, negative prediction value, F1 and balanced accuracy from all the models despite SMOTE and ROSE.
+```{r echo=FALSE}
+results <- rbind(LinearSVM_results,PolynomialSVM_results,RadialSVM_results,KNN_results,MKNN_results)
+row.names(results) <- c('Linear SVM','Polynomial SVM','Radial SVM','KNN', 'Modified KNN')
+results %>% 
+  kable() %>% 
+  kableExtra::kable_styling(full_width = T, 
+                            position = 'left', 
+                            font_size = 12)
+```
+
+For the above table it is clear that out all five models Polynomial SVM has been the best as both the accuracy and balanced accuracy are much better when compared with other models.
+
+# Resampling methods
+
+Applying Up-sampling, down-sampling and ROSE models on the data as the dataset contains a lot more 0's than 1. The data is highly imbalanced, hence we apply sampling methods to try and overcome this problem. 
+
+## Up-sampling
+
+Up-sampling is a procedure where synthetically generated data points (corresponding to minority class) are injected into the dataset. After this process, the counts of both labels are almost the same. This equalization procedure prevents the model from inclining towards the majority class.
+
+```{r echo=FALSE,warning=FALSE}
+
+data_train$Class <- make.names(data_train$Class)
+fiveStats <- function(...) c(twoClassSummary(...), 
+                             defaultSummary(...))
+
+
+ctrl_cv5 <- trainControl(method = "cv",
+                         number = 5,
+                         classProbs = TRUE,
+                         summaryFunction = fiveStats)
+
+ctrl_cv5$sampling <- "up"
+
+set.seed(987654321)
+
+data_train_up <- train(Class~., 
+                       data = data_train, 
+                       method = 'svmLinear', 
+                       family = "binomial", 
+                       trControl = ctrl_cv5)
+
+data_train_up
+
+```
+Accuracy achieved with the help of up-sampling model is 0.9865
+
+## Down-sampling
+
+Down-sampling (in this context) means training on a disproportionately low subset of the majority class examples. Upweighting means adding an example weight to the downsampled class equal to the factor by which you downsampled.
+
+```{r warning=FALSE, echo=FALSE}
+fiveStats <- function(...) c(twoClassSummary(...), 
+                             defaultSummary(...))
+
+
+ctrl_cv5 <- trainControl(method = "cv",
+                         number = 5,
+                         classProbs = TRUE,
+                         summaryFunction = fiveStats)
+
+ctrl_cv5$sampling <- "down"
+
+data_train_down <- train(Class~., 
+                         data = data_train, 
+                         method = 'svmLinear', 
+                         family = 'binomial', 
+                         trControl = ctrl_cv5)
+
+data_train_down
+```
+
+Accuracy is 0.9781 when down-sampling.
+
+## ROSE - Random Over-Sampling
+
+ROSE (Random Over-Sampling Ex- amples) is a bootstrap-based technique which aids the task of binary classification in the presence of rare classes. It handles both continuous and categorical data by generating synthetic examples from a conditional density estimate of the two classes.
+
+
+```{r warning=FALSE, echo=FALSE}
+
+data_train$Class <- make.names(data_train$Class)
+fiveStats <- function(...) c(twoClassSummary(...), 
+                             defaultSummary(...))
+
+
+ctrl_cv5 <- trainControl(method = "cv",
+                         number = 5,
+                         classProbs = TRUE,
+                         summaryFunction = fiveStats)
+
+ctrl_cv5$sampling <- "rose"
+
+set.seed(987654321)
+
+
+data_logit_train_ROSE <- train(Class ~.,
+                          data = data_train,
+                          method = "svmLinear",
+                          family = "binomial",
+                          trControl = ctrl_cv5)
+data_logit_train_ROSE
+
+```
+
+Accuracy of the model is 0.9970
+
+## Summarizing the results from re-sampling methods
+
+For all the re-sampling models used in this work we have used Linear SVM method to analyze the efficient of the models. The most important reason to use re-sampling was to try and overcome the issue of highly imbalanced data.
+
+Out of all the re-sampling methods used, Random over-sampling Ex-amples (ROSE) has performed the best with the accuracy at 0.9959.
